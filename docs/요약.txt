@@ -1,0 +1,14 @@
+1. 한 줄 정의
+"No-MMU Nios II SoC 기반 경량 이벤트 드리븐 OS와 실시간 FFT 스펙트럼 분석 기능을 갖춘 대화형 디지털 오실로스코프(DSO) 구현"
+
+=> ADC 또는 Line_in 단자를 통해 아날로그 입력 신호를 고속 샘플링하여, 실시간 디지털 파형(Waveform)으로 시각화하는 오실로스코프 시스템
+
+2. 핵심 컨셉 키워드 3가지: 
+  - 계층형 경량 이벤트 드리븐 OS (Layered Tiny OS)
+상용 RTOS나 외부 라이브러리 없이 SysTick 타이머 기반의 비차단(Non-blocking) 이벤트 디스패처와 HAL-BSW-OS-App 계층 구조를 직접 설계하여 결정론적 실시간성 확보.
+ 
+  - 초경량 고정소수점 DSP 엔진 (Fixed-Point FFT & Split-View)
+FPU가 없는 Nios II의 한계를 극복하기 위해 16-bit 고정소수점 64-point Radix-2 FFT를 순수 정수 연산으로 구현, 시간축 파형과 주파수 스펙트럼(32 Bins)을 분할 화면(Split-View)으로 실시간 렌더링.
+
+  - 대화형 HMI & 무깜빡임 선택적 렌더링 (Interactive GUI & Zero-Flicker)
+PS/2 마우스 인터랙션을 통해 전압 커서V_1 및 트리거 레벨(<T>)을 실시간 조작하며, 화면 전체 갱신 대신 이전 픽셀만 선별 복원하는 선택적 소거(Selective Erase) 기법으로 CPU 점유율 3% 미만의 안정적인 30 FPS 구동.

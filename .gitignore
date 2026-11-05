@@ -1,0 +1,19 @@
+﻿# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.BIN/
+.DS_Store
+
+# Editor / IDE directories
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build / Temporary
+*.o
+*.obj
+*.exe
+*.tmp
+*.bak
