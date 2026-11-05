@@ -75,14 +75,14 @@
    * 오디오 샘플 레이트 $F_s = 8\text{ kHz}$일 때 1개 샘플 소비 시간은 $125\ \mu\text{s}$.
    * DE1-SoC Audio Core의 HW FIFO 용량은 **128 샘플**로, CPU가 FIFO를 전혀 비우지 않아도 **최대 16 ms 동안 오버플로우 없이 유지**됩니다 ($128 \times 125\ \mu\text{s} = 16\text{ ms}$).
    * 33ms 주기 렌더링(`render_frame`)의 실제 소요 시간:
-     * 16비트 고정소수점 64-pt FFT 연산: 50 MHz Nios II 기준 **약 0.5 ms 미만**.
+     * 16비트 고정소수점 64-pt FFT 연산: 100MHz Nios II 기준 **약 0.25 ms 미만**.
      * 선택적 소거 기반 VGA 드로잉: **약 1.5 ~ 2 ms 내외**.
      * **총 실행 시간(WCET): 약 2 ~ 3 ms에 불과**.
    * 즉, 렌더링이 2ms 만에 끝나고 즉시 고속 I/O 루프로 복귀하므로, 16ms 버퍼 여유를 가진 오디오 FIFO는 선점형 스케줄러 없이도 절대 넘치지 않습니다.
 
 2. **동기화 객체(Mutex/Semaphore) 및 크리티컬 섹션 오버헤드 배제**
    * 선점형 RTOS에서는 VGA 화면 버퍼를 쓰는 도중 인터럽트로 마우스나 오디오 태스크가 선점하면 **화면 찢김(Tearing)이나 레이스 컨디션(Race Condition)**이 발생합니다.
-   * 이를 방지하기 위해 락(Lock)이나 인터럽트 마스킹(`cli`/`sti`)을 사용하면 50 MHz 프로세서에서 막대한 사이클 낭비가 일어납니다.
+   * 이를 방지하기 위해 락(Lock)이나 인터럽트 마스킹(`cli`/`sti`)을 사용하면 100MHz 프로세서에서도 막대한 사이클 낭비가 일어납니다.
    * 협력형 모델은 각 서브루틴이 **CPU를 완전 독점(Run-to-Completion)**하므로 별도 락 없이도 모든 공유 데이터 접근의 **원자성(Atomicity)**이 100% 보장됩니다.
 
 3. **온칩 메모리(SRAM) 절약 및 컨텍스트 스위칭 제로**
@@ -112,7 +112,7 @@
 
 ## 7. 무깜빡임(Zero-Flicker) 선택적 렌더링 알고리즘
 
-매 프레임마다 전체 화면(320×240 = 76,800 픽셀)을 지우고 다시 그리는 방식은 50 MHz Nios II 환경에서 극심한 화면 깜빡임과 프레임 드랍(FPS < 5)을 유발합니다.
+매 프레임마다 전체 화면(320×240 = 76,800 픽셀)을 지우고 다시 그리는 방식은 100MHz Nios II 환경에서도 극심한 화면 깜빡임과 프레임 드랍(FPS < 10)을 유발합니다.
 
 ```c
 // [원리] 이전 프레임에서 변경된 픽셀 좌표만 선별 복원 (Selective Erase)
@@ -501,10 +501,11 @@ static void ps2_poll_mouse(void) {
 // ============================================================================
 static void timer_init(void) {
     volatile uint32_t *timer = HW_REGS(TIMER0_BASE);
-    timer[0] = 0;
-    timer[2] = 0xC350 & 0xFFFF;
-    timer[3] = (0xC350 >> 16) & 0xFFFF;
-    timer[1] = 0x06;
+    timer[0] = 0; // TO(Timeout) 비트 클리어
+    // 100MHz 시스템 클럭 기준 1ms SysTick 주기: 100,000 사이클 = 0x186A0
+    timer[2] = 0x186A0 & 0xFFFF;         // Periodl: 0x86A0
+    timer[3] = (0x186A0 >> 16) & 0xFFFF; // Periodh: 0x0001
+    timer[1] = 0x06; // START=1, CONT=1, ITO=0 (시뮬레이터용 Polling 구동)
 }
 
 static inline void timer_poll(void) {
@@ -886,3 +887,156 @@ int main(void) {
 4. [텀프_초안업데이트ver_cpulator.c](src/텀프_초안업데이트ver_cpulator.c)의 전체 코드를 복사하여 CPulator 에디터에 붙여넣기.
 5. **Compile and Load (단축키 `F5`)** $\rightarrow$ **Continue (단축키 `F3`)** 실행.
 6. **VGA Display** 화면에서 실시간 파형 및 스펙트럼 확인, 우측 패널의 **`[+F]`, `[-F]`, `[+A]`, `[-A]` 버튼**을 마우스로 클릭하여 주파수/진폭 실시간 변화 확인.
+
+---
+
+## 11. 실제 DE1-SoC 하드웨어 타깃: 타이머 인터럽트(ISR) 포팅 가이드
+
+현재 저장소의 [텀프_초안업데이트ver_cpulator.c](src/텀프_초안업데이트ver_cpulator.c)는 웹 기반 **CPulator 시뮬레이터 환경**에서의 손쉬운 검증 및 예외 핸들러 의존성을 배제하기 위해 메인 슈퍼루프에서 `timer_poll()` 함수로 타이머 타임아웃(TO) 플래그를 주기적으로 검사하여 `g_jiffies`를 1씩 증가시키는 **소프트웨어 폴링(Polling) 방식**으로 구현되어 있습니다.
+
+실제 **Terasic DE1-SoC 보드(Intel Cyclone V SoC)**에 업로드할 때에는 메인 루프의 DSP/GUI 연산 부하와 무관하게 **결정론적인 1ms 하드웨어 시간 기준(Hard Real-Time SysTick)**을 보장해야 하므로, 아래와 같이 **하드웨어 인터럽트(Timer IRQ) 및 인터럽트 서비스 루틴(ISR)** 구동 방식으로 전환합니다.
+
+---
+
+### 11.1 100MHz 클럭 기준 타이머 레지스터 설정 (Period & Control)
+
+* **시스템 클럭**: $100\text{ MHz} \implies 1\text{ 클럭 주기} = 10\text{ ns}$
+* **1ms 주기 카운트 수**: $100\text{ MHz} \times 1\text{ ms} = 100,000\text{ cycles} = \text{0x000186A0}$
+* **Period 레지스터 분할**:
+  * `Periodl (Offset 2)` = `0x86A0` (하위 16비트)
+  * `Periodh (Offset 3)` = `0x0001` (상위 16비트)
+* **Control 레지스터 설정 (`Offset 1`)**:
+  * `ITO (Bit 0)` = `1` (인터럽트 활성화: 카운터 0 도달 시 IRQ 라인 구동)
+  * `CONT (Bit 1)` = `1` (연속 모드: 0 도달 시 Period 값 자동 재장전)
+  * `START (Bit 2)` = `1` (카운터 시작)
+  * $\implies$ **Control 제어값 = `0x07` (`0b0111`)**
+
+---
+
+### 11.2 타이머 인터럽트 서비스 루틴 (Timer ISR)
+
+```c
+#include <stdint.h>
+
+// 메인 슈퍼루프와 비동기 공유되므로 반드시 volatile 선언
+extern volatile uint32_t g_jiffies;
+
+#define TIMER0_BASE 0xFF202000
+#define HW_REGS(base) ((volatile uint32_t *)(base))
+
+/**
+ * @brief Interval Timer 0 인터럽트 서비스 루틴 (1ms 주기 호출)
+ */
+void timer_isr(void* context) {
+    volatile uint32_t *timer = HW_REGS(TIMER0_BASE);
+
+    /* [중요] 반드시 Status 레지스터의 TO(Timeout) 비트를 클리어(ACK)해야 함!
+     * 0을 쓰지 않으면 인터럽트 요청 신호(IRQ)가 High로 유지되어 
+     * ISR을 빠져나가자마자 인터럽트가 무한 재발생(Interrupt Storm)합니다. */
+    timer[0] = 0;
+
+    // 1ms SysTick 증가 (원자적 32-bit 단일 사이클 쓰기)
+    g_jiffies++;
+}
+```
+
+---
+
+### 11.3 인터럽트 등록 및 초기화 코드
+
+#### Option A. Intel/Altera HAL 환경 (`sys/alt_irq.h`) 사용 시 (권장)
+Quartus Prime / Nios II Software Build Tools (Eclipse) 프로젝트의 BSP(Board Support Package)를 사용하는 일반적인 개발 환경:
+
+```c
+#include <sys/alt_irq.h>
+#include "system.h" // Qsys에서 생성된 TIMER_0_BASE, TIMER_0_IRQ 정의 포함
+
+static void timer_interrupt_init(void) {
+    volatile uint32_t *timer = HW_REGS(TIMER0_BASE);
+
+    // 1. 타이머 정지 및 상태 초기화
+    timer[1] = 0x08; // STOP = 1
+    timer[0] = 0;    // Clear TO
+
+    // 2. 100MHz 기준 1ms 주기 (100,000 = 0x186A0) 설정
+    timer[2] = 0x186A0 & 0xFFFF;         // Periodl: 0x86A0
+    timer[3] = (0x186A0 >> 16) & 0xFFFF; // Periodh: 0x0001
+
+    // 3. Altera HAL 인터럽트 핸들러 등록
+    // (TIMER_0_IRQ_INTERRUPT_CONTROLLER_ID, TIMER_0_IRQ는 system.h에 자동 정의됨)
+    alt_ic_isr_register(
+        TIMER_0_IRQ_INTERRUPT_CONTROLLER_ID,
+        TIMER_0_IRQ,
+        timer_isr,
+        0x0,
+        0x0
+    );
+
+    // 4. 타이머 연속 카운트 및 인터럽트 활성화 (ITO=1, CONT=1, START=1)
+    timer[1] = 0x07;
+}
+```
+
+#### Option B. 순수 베어메탈 (No-HAL, Nios II 특권 제어 레지스터 직접 제어) 사용 시
+BSP 라이브러리 없이 직접 하드웨어를 제어하는 경우:
+
+```c
+static void timer_interrupt_init_baremetal(int timer_irq_num) {
+    volatile uint32_t *timer = HW_REGS(TIMER0_BASE);
+
+    // 1. 주기 및 카운터 설정 (100MHz 기준 1ms)
+    timer[0] = 0;
+    timer[2] = 0x186A0 & 0xFFFF;
+    timer[3] = (0x186A0 >> 16) & 0xFFFF;
+
+    // 2. 타이머 인터럽트 인에이블 (ITO=1, CONT=1, START=1)
+    timer[1] = 0x07;
+
+    // 3. Nios II 내부 인터럽트 컨트롤러(ienable)에서 타이머 IRQ 비트 활성화
+    uint32_t ienable;
+    __asm__ volatile ("rdctl %0, ienable" : "=r" (ienable));
+    ienable |= (1 << timer_irq_num);
+    __asm__ volatile ("wrctl ienable, %0" : : "r" (ienable));
+
+    // 4. Nios II 프로세서 글로벌 인터럽트 활성화 (status.PIE = 1)
+    uint32_t status;
+    __asm__ volatile ("rdctl %0, status" : "=r" (status));
+    status |= 0x01; // Bit 0: PIE (Processor Interrupt Enable)
+    __asm__ volatile ("wrctl status, %0" : : "r" (status));
+}
+```
+
+---
+
+### 11.4 메인 루프에서의 변경 사항
+
+하드웨어 인터럽트로 전환한 후에는 메인 루프에서 `timer_poll()`을 호출할 필요가 없으므로 코드가 아래와 같이 더욱 간결해집니다:
+
+```c
+int main(void) {
+    // 1. 하드웨어 드라이버 초기화
+    dds_init();
+    audio_init();
+    timer_interrupt_init(); // <-- 인터럽트 방식으로 초기화
+    ps2_init();
+    gui_init();
+
+    uint32_t last_render_tick = 0;
+    uint32_t frame_counter = 0;
+
+    while (1) {
+        // timer_poll(); <-- [삭제됨] 하드웨어 ISR이 백그라운드에서 1ms마다 g_jiffies를 자동 증가
+
+        ps2_poll_mouse();
+        audio_stream_loopback();
+
+        // 30 FPS 비차단 협력형 스케줄러 (~33ms 경과 검사)
+        if ((uint32_t)(g_jiffies - last_render_tick) >= 33) {
+            last_render_tick = g_jiffies;
+            render_frame(frame_counter++);
+        }
+    }
+
+    return 0;
+}
+```

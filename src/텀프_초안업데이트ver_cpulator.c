@@ -359,10 +359,11 @@ static void ps2_poll_mouse(void) {
 // ============================================================================
 static void timer_init(void) {
     volatile uint32_t *timer = HW_REGS(TIMER0_BASE);
-    timer[0] = 0;
-    timer[2] = 0xC350 & 0xFFFF;
-    timer[3] = (0xC350 >> 16) & 0xFFFF;
-    timer[1] = 0x06;
+    timer[0] = 0; // TO(Timeout) 비트 클리어
+    // 100MHz 시스템 클럭 기준 1ms SysTick 주기: 100,000 사이클 = 0x186A0
+    timer[2] = 0x186A0 & 0xFFFF;         // Periodl: 0x86A0
+    timer[3] = (0x186A0 >> 16) & 0xFFFF; // Periodh: 0x0001
+    timer[1] = 0x06; // START=1, CONT=1, ITO=0 (시뮬레이터용 Polling 구동)
 }
 
 static inline void timer_poll(void) {
