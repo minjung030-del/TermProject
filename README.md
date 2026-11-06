@@ -14,8 +14,8 @@
 
 | 번호 | 핵심 컨셉 키워드 | 세부 설계 및 공학적 구현 내용 |
 | :---: | :--- | :--- |
-| **01** | **계층형 경량 이벤트 드리븐 OS**<br>*(Layered Tiny OS)* | • 상용 RTOS나 외부 라이브러리 없이 SysTick(1ms) 타이머 기반 비차단(Non-blocking) 이벤트 디스패처 구축<br>• HAL - BSW - OS - App 4계층 구조를 직접 설계하여 결정론적 실시간성(Deterministic Hard Real-Time) 및 모듈성 확보<br>• 3-Byte PS/2 패킷 무결성 가드(Bit 3 Sync) 및 I/O 버퍼 고속 배출(Rapid FIFO Drain)로 오버플로우 방지 |
-| **02** | **초경량 고정소수점 DSP 엔진**<br>*(Fixed-Point FFT & Split-View)* | • FPU 레이턴시 오버헤드 배제 및 연산 속도 극대화를 위해 16-bit Q8 고정소수점 64-Point Radix-2 DIT FFT를 순수 정수 연산과 1사이클 비트 시프트로 직접 구현<br>• 32-step 삼각함수 LUT 기반 고속 연산 및 Alpha-Max + Beta-Min 복소수 진폭 근사 알고리즘 적용<br>• 시간축 파형과 주파수 스펙트럼(32 Bins)을 분할 화면(Split-View)으로 실시간 렌더링하고 피크 주파수(kHz)를 OSD에 자동 도출 |
+| **01** | **하드웨어 인터럽트 & 계층형 OS**<br>*(Timer & Audio IRQ Driven)* | • **Timer IRQ 0 (1ms SysTick)** 및 **Audio IRQ 6 (FIFO In/Out)**을 Nios II 예외 벡터(`.exceptions`, `0x20`)에 직접 등록하여 완벽한 비동기 백그라운드 처리 달성<br>• 30 FPS 비차단(Non-blocking) 슈퍼루프와 결합하여 결정론적 하드 실시간성(Deterministic Hard Real-Time) 확보<br>• 우측 패널 **`[SOURCE]` 토글**을 통해 `DAC PCM`(DDS 실시간 모니터링)과 `ADC Input`(외부/CPulator 입력) 간 듀얼 소스 선택 렌더링 지원 |
+| **02** | **초경량 고정소수점 DSP 엔진**<br>*(Fixed-Point FFT & Split-View)* | • 16-bit 고정소수점 64-Point Radix-2 DIT FFT를 순수 정수 연산과 1사이클 비트 시프트로 직접 구현 (100MHz 기준 **0.25 ms 미만** 연산)<br>• **[안내]** 현재의 FFT 및 Fixed-Point(Q2.14) 스케일링 파라미터는 CPulator 시뮬레이션용 **임시(Draft) 설정**이며, 추후 실제 DE1-SoC 보드에서 오디오 코덱 입력 레벨($V_{\text{pp}}$) 실측 및 내장 하드웨어 FPU 활용 여부를 검토하여 최종 확정 예정<br>• 시간축 파형과 주파수 스펙트럼(32 Bins)을 분할 화면(Split-View)으로 실시간 렌더링하고 피크 주파수(kHz)를 OSD에 자동 도출 |
 | **03** | **대화형 HMI & 무깜빡임 선택적 렌더링**<br>*(Interactive GUI & Zero-Flicker)* | • PS/2 마우스 인터랙션을 통해 화면 우측의 `[+F]`, `[-F]`, `[+A]`, `[-A]` 버튼을 클릭하여 주파수/진폭 실시간 조작<br>• $V_1$ 전압 측정 커서선 및 `<T>` 트리거 레벨 마커 실시간 마우스 드래그 앤 드롭<br>• 화면 전체 갱신 대신 이전 픽셀만 선별 복원하는 선택적 소거(Selective Erase) 기법으로 CPU 점유율 3% 미만의 안정적인 30 FPS 구동 |
 
 ---
@@ -33,7 +33,7 @@
 | **상단 헤더 툴바** | $320 \times 10$ (Row 0~1) | `[RUN]  [LINE LOOPBACK]  CH1: 500mV/div  Span: 4.0kHz` 시스템 상태 표시 |
 | **시간축 파형 스코프** | $220 \times 100$ ($X: 15 \sim 235, Y: 14 \sim 114$) | • 실시간 오디오 입력 파형 (노란색)<br>• $V_1$ 전압 측정선 (청록색 점선, 마우스 드래그 가능)<br>• `<T>` 에지 트리거 레벨 마커 (빨간색, 마우스 드래그 가능)<br>• 스코프 격자 도트 그리드 배경 |
 | **주파수축 스펙트럼** | $220 \times 104$ ($X: 15 \sim 235, Y: 124 \sim 228$) | • 64-Point Radix-2 FFT 32-Bin 스펙트럼 바 차트 (형광 녹색)<br>• FFT 베이스라인 및 주파수 가이드 도트 |
-| **우측 OSD 컨트롤 패널** | $80 \times 240$ ($X: 240 \sim 320, Y: 0 \sim 240$) | • **`[+F]`, `[-F]`**: DDS 신호 주파수 증감 버튼 (0 ~ 3.50 kHz)<br>• **`[+A]`, `[-A]`**: DDS 신호 진폭 증감 버튼 (0.00 ~ 2.50 V)<br>• **실시간 계측값 HUD**: Freq, Amp, Peak Freq, Span, Mode 표시 |
+| **우측 OSD 컨트롤 패널** | $80 \times 240$ ($X: 240 \sim 320, Y: 0 \sim 240$) | • **`[+F]`, `[-F]`**: DDS 신호 주파수 증감 버튼 (0 ~ 3.50 kHz)<br>• **`[+A]`, `[-A]`**: DDS 신호 진폭 증감 버튼 (0.00 ~ 2.50 V)<br>• **`[SOURCE]`**: 스펙트럼 입력 소스 토글 (`DAC PCM` $\leftrightarrow$ `ADC Input`)<br>• **실시간 계측값 HUD**: Freq, Amp, Peak Freq, Span, Mode 표시 |
 
 ---
 
@@ -92,9 +92,10 @@
 4. **엄격한 결정론적 실행(Deterministic Timing) 보장**
    * 우선순위 역전이나 스케줄러 틱 지터 없이 **정확히 33ms마다 DSP 연산과 화면 출력을 수행**하는 하드 실시간(Hard Real-Time) 특성을 가집니다.
 
-5. **[참고] FFT 연산에서의 부동소수점 유닛(FPU) 활용 가능성 (선택 사항)**
+5. **[참고] FFT 연산에서의 부동소수점 유닛(FPU) 활용 가능성 및 임시 파라미터 안내 (선택 사항)**
    * **현재 구현 (비트 시프트 기반 고정소수점)**:
      * 본 프로젝트의 64-pt FFT는 연산 지연(Latency)을 최소화하기 위해 **단 1사이클에 수행되는 산술 비트 시프트(`>>`, `<<`)**를 사용하여 스케일링과 나눗셈을 처리했습니다 (100MHz 기준 연산 시간 **0.25ms 미만** 달성).
+     * **[중요 - 임시 파라미터 명시]**: 현재 코드에 적용된 FFT 비트 분할(Q2.14) 및 스케일링 파라미터는 CPulator 시뮬레이션 환경에 맞춘 **임시(Draft) 설정**입니다. 추후 실제 DE1-SoC 하드웨어 보드에서 Audio Codec Line-In 전압 레벨($V_{\text{pp}}$)을 오실로스코프로 실측하고, Nios II 내장 FPU(`nios2_floating_point`) 활용 여부를 종합 검토한 후 최종 결정 및 최적화될 예정입니다.
    * **하드웨어 FPU 활용 (대안 옵션)**:
      * 본 DE1-SoC Computer 시스템의 Nios II 코어에는 **하드웨어 FPU(`nios2_floating_point` Custom Instruction)가 기본 내장**되어 있습니다.
      * 따라서 복잡한 고정소수점 변환 대신 **C 언어 표준 `float` 자료형의 곱셈(`*`) 및 나눗셈(`/`)을 사용하여 구현하는 것도 가능**하며, 이는 알고리즘의 직관성과 극단적 연산 최적화 사이의 **설계 선택 사항**입니다.
@@ -141,13 +142,129 @@ if (g_old_fft_h[b] > new_h) {
 
 ---
 
-## 8. 전체 소스 코드 ([텀프_초안업데이트ver_cpulator.c](src/텀프_초안업데이트ver_cpulator.c))
+## 8. 전체 소스 코드 ([de1soc_cpulator_irq_dual_source.c](src/de1soc_cpulator_irq_dual_source.c))
+
+> **[주요 업데이트]**  
+> * **Nios II 예외 벡터 등록(.section .exceptions,  x20)**: Timer IRQ 0 (1ms SysTick) 및 Audio IRQ 6 (FIFO In/Out)을 하드웨어 인터럽트로 완전 통합하여 메인 슈퍼루프 부하를 최소화.  
+> * **듀얼 소스 모니터링([SOURCE] 버튼)**:  
+>   * DAC PCM (기본값): DDS 발생기가 DAC FIFO로 보내는 PCM을 디지털 링버퍼(g_dac_ring)로 캡처하여 VGA 및 FFT 실시간 분석 (마우스 주파수/진폭 조작 즉각 연동).  
+>   * ADC Input (선택 모드): Audio Core Line-In ADC FIFO 입력(g_adc_ring) 분석 (CPulator에서는 독립 250Hz 톱니파 표시, 실제 보드에서는 AUX 루프백 신호 분석).  
+> * **[임시 파라미터 안내]**: 본 코드의 FFT 및 고정소수점(Fixed-Point Q2.14) 스케일링 파라미터는 CPulator 시뮬레이션 환경용 **임시(Draft) 파라미터**이며, 추후 실제 DE1-SoC 하드웨어 보드에서 Line-In 전압 레벨(Vpp) 실측 및 FPU 활용 여부를 검토하여 최종 확정됩니다.
 
 <details open>
-<summary><b>[전체 C 소스 코드 보기 - 클릭하여 접기 / 펼치기] (총 586라인)</b></summary>
+<summary><b>[전체 C 소스 코드 보기 - 클릭하여 접기 / 펼치기]</b></summary>
 
-```c
+``c
+/*
+ * DE1-SoC / CPulator Audio IRQ demo: selectable spectrum source.
+ * SOURCE_DAC (default): waveform/FFT track DDS PCM written to DAC FIFO.
+ * SOURCE_ADC: waveform/FFT show independent input (250 Hz sawtooth in CPulator).
+ * Click [SOURCE] at lower-right to switch views.
+ * This digital monitor does not physically route DAC analog output into ADC.
+ * 
+ * [안내] 현재 구현된 FFT 및 Fixed-Point(Q2.14) 스케일링/비트 수는 CPulator 시뮬레이션 환경용 임시 파라미터입니다.
+ * 추후 실제 DE1-SoC 하드웨어 보드에서 Audio Codec Line-In 전압(Vpp) 및 Nios II FPU Custom Instruction 활용 여부를
+ * 실측 확인한 후 최종 확정 및 최적화될 예정입니다.
+ */
 #include <stdint.h>
+
+/* CPulator DE1-SoC Nios II 8 kHz build.
+ * CODEC_CONFIG_MMIO=0: the simulator does NOT map the config core.
+ * Set to 1 only for a physical system with a confirmed config core at 0xFF203000.
+ */
+#ifndef CODEC_CONFIG_MMIO
+#define CODEC_CONFIG_MMIO 0
+#endif
+#define AUDIO_SAMPLE_RATE 8000u
+#define AUDIO_CORE_WIDTH 32  /* Audio Core data width, distinct from WM8731 16-bit IWL */
+#define ADC_RING_SIZE 1024u /* power of two; used for both ADC/DAC monitors */
+#define ADC_RING_MASK (ADC_RING_SIZE-1u)
+#define SOURCE_ADC 0
+#define SOURCE_DAC 1
+#define AUDIO_IRQ (1u << 6)
+#define TIMER_IRQ (1u << 0)
+
+/* IRQ vector in the .exceptions section (exception address 0x20).
+ * Save all GPRs except sp, and restore ea/et exactly as Nios II requires.
+ * The C function interrupt_handler() is defined below.
+ */
+void interrupt_handler(void);
+__asm__(
+    ".section .exceptions, \"ax\"\n"
+    ".global the_exception\n"
+    "the_exception:\n"
+    "subi sp, sp, 128\n"
+    "stw et, 96(sp)\n"
+    "rdctl et, ipending\n"
+    "beq et, r0, 1f\n"
+    "subi ea, ea, 4\n"
+    "1:\n"
+    "stw r1, 4(sp)\n"
+    "stw r2, 8(sp)\n"
+    "stw r3, 12(sp)\n"
+    "stw r4, 16(sp)\n"
+    "stw r5, 20(sp)\n"
+    "stw r6, 24(sp)\n"
+    "stw r7, 28(sp)\n"
+    "stw r8, 32(sp)\n"
+    "stw r9, 36(sp)\n"
+    "stw r10, 40(sp)\n"
+    "stw r11, 44(sp)\n"
+    "stw r12, 48(sp)\n"
+    "stw r13, 52(sp)\n"
+    "stw r14, 56(sp)\n"
+    "stw r15, 60(sp)\n"
+    "stw r16, 64(sp)\n"
+    "stw r17, 68(sp)\n"
+    "stw r18, 72(sp)\n"
+    "stw r19, 76(sp)\n"
+    "stw r20, 80(sp)\n"
+    "stw r21, 84(sp)\n"
+    "stw r22, 88(sp)\n"
+    "stw r23, 92(sp)\n"
+    "stw r25, 100(sp)\n"
+    "stw r26, 104(sp)\n"
+    "stw r28, 112(sp)\n"
+    "stw r29, 116(sp)\n"
+    "stw r30, 120(sp)\n"
+    "stw r31, 124(sp)\n"
+    "addi fp, sp, 128\n"
+    "call interrupt_handler\n"
+    "ldw r1, 4(sp)\n"
+    "ldw r2, 8(sp)\n"
+    "ldw r3, 12(sp)\n"
+    "ldw r4, 16(sp)\n"
+    "ldw r5, 20(sp)\n"
+    "ldw r6, 24(sp)\n"
+    "ldw r7, 28(sp)\n"
+    "ldw r8, 32(sp)\n"
+    "ldw r9, 36(sp)\n"
+    "ldw r10, 40(sp)\n"
+    "ldw r11, 44(sp)\n"
+    "ldw r12, 48(sp)\n"
+    "ldw r13, 52(sp)\n"
+    "ldw r14, 56(sp)\n"
+    "ldw r15, 60(sp)\n"
+    "ldw r16, 64(sp)\n"
+    "ldw r17, 68(sp)\n"
+    "ldw r18, 72(sp)\n"
+    "ldw r19, 76(sp)\n"
+    "ldw r20, 80(sp)\n"
+    "ldw r21, 84(sp)\n"
+    "ldw r22, 88(sp)\n"
+    "ldw r23, 92(sp)\n"
+    "ldw et, 96(sp)\n"
+    "ldw r25, 100(sp)\n"
+    "ldw r26, 104(sp)\n"
+    "ldw r28, 112(sp)\n"
+    "ldw r29, 116(sp)\n"
+    "ldw r30, 120(sp)\n"
+    "ldw r31, 124(sp)\n"
+    "addi sp, sp, 128\n"
+    "eret\n"
+    ".previous\n"
+);
+
 
 // ============================================================================
 // DE1-SoC Memory Map & Base Addresses (Altera University Program)
@@ -219,12 +336,22 @@ typedef struct {
 // Global State Variables
 // ============================================================================
 static volatile uint32_t g_jiffies = 0;
+static volatile uint32_t g_adc_total = 0; /* monotonic producer count */
+static volatile int16_t g_adc_ring[ADC_RING_SIZE]; /* physical/simulated ADC PCM */
+static volatile uint32_t g_dac_total = 0; /* PCM samples submitted to output FIFO */
+static volatile int16_t g_dac_ring[ADC_RING_SIZE]; /* digital DAC monitor (not ADC) */
+static int g_source_mode = SOURCE_DAC; /* default: waveform follows DDS settings */
+static volatile uint32_t g_adc_irq_count = 0;
+static volatile uint32_t g_audio_irq_count = 0;
+static volatile uint32_t g_dac_phase_inc = 0;
+static volatile uint32_t g_dac_sent = 0;
+
 static mouse_state_t     g_mouse;
 static scope_state_t     g_scope;
 
 // Generator Control States (Initial: 0)
 static int g_freq_hz   = 0; // 0..3500 Hz (Step: 250 Hz)
-static int g_amp_level = 0; // 0..5 (Step: 1 level = 0.5V)
+static volatile int g_amp_level = 0; // 0..5 (Step: 1 level = 0.5V)
 
 static uint32_t g_audio_phase = 0;
 static uint8_t  g_ps2_packet[3];
@@ -254,18 +381,18 @@ static const uint8_t MOUSE_ARROW[8][8] = {
     {1, 0, 0, 0, 1, 1, 0, 0}
 };
 
-// Q8 Fixed-Point Twiddle Factors for 64-point FFT
-static const int16_t W_COS_Q8[32] = {
-    256, 254, 251, 246, 236, 225, 213, 198,
-    181, 163, 142, 120,  98,  74,  50,  25,
-      0, -25, -50, -74, -98,-120,-142,-163,
-   -181,-198,-213,-225,-236,-246,-251,-254
+/* Signed Q2.14 twiddle values: +/-1 is exactly representable. */
+static const int16_t W_COS_Q14[32] = {
+    16384, 16305, 16069, 15679, 15137, 14449, 13623, 12665,
+    11585, 10394, 9102, 7723, 6270, 4756, 3196, 1606,
+    0, -1606, -3196, -4756, -6270, -7723, -9102, -10394,
+    -11585, -12665, -13623, -14449, -15137, -15679, -16069, -16305
 };
-static const int16_t W_SIN_Q8[32] = {
-      0,  25,  50,  74,  98, 120, 142, 163,
-    181, 198, 213, 225, 236, 246, 251, 254,
-    256, 254, 251, 246, 236, 225, 213, 198,
-    181, 163, 142, 120,  98,  74,  50,  25
+static const int16_t W_SIN_Q14[32] = {
+    0, 1606, 3196, 4756, 6270, 7723, 9102, 10394,
+    11585, 12665, 13623, 14449, 15137, 15679, 16069, 16305,
+    16384, 16305, 16069, 15679, 15137, 14449, 13623, 12665,
+    11585, 10394, 9102, 7723, 6270, 4756, 3196, 1606
 };
 
 // ============================================================================
@@ -360,14 +487,16 @@ static void draw_box(int x1, int y1, int x2, int y2, uint16_t color) {
 }
 
 // ============================================================================
-// Fixed-Point 64-Point FFT Engine
+// Fixed-Point 64-Point FFT Engine (CPulator 시뮬레이션용 임시 구현)
+// [주의] 본 FFT 비트 분할(Q2.14) 및 스케일링 파라미터는 시뮬레이션 검증용 임시 설정이며,
+// 추후 실제 DE1-SoC 보드에서 Codec 파라미터 실측 및 FPU 사용 여부 검토 후 최종 결정 예정입니다.
 // ============================================================================
-static void fft_bit_reverse(int16_t *real, int16_t *imag) {
+static void fft_bit_reverse(int32_t *real, int32_t *imag) {
     int j = 0;
     for (int i = 0; i < 63; i++) {
         if (i < j) {
-            int16_t tr = real[i]; real[i] = real[j]; real[j] = tr;
-            int16_t ti = imag[i]; imag[i] = imag[j]; imag[j] = ti;
+            int32_t tr = real[i]; real[i] = real[j]; real[j] = tr;
+            int32_t ti = imag[i]; imag[i] = imag[j]; imag[j] = ti;
         }
         int k = 32;
         while (k <= j) {
@@ -378,75 +507,143 @@ static void fft_bit_reverse(int16_t *real, int16_t *imag) {
     }
 }
 
-static void fixed_fft_64(int16_t *real, int16_t *imag) {
+/* FFT stage data are 32-bit raw PCM codes (15 fractional bits); twiddles Q2.14.
+ * Output scale equals unnormalized DFT, no per-stage right shift.
+ * 64*32768 < 2^31 so stage growth fits in int32_t.
+ */
+static void fixed_fft_64(int32_t *real, int32_t *imag) {
     fft_bit_reverse(real, imag);
-
     for (int len = 2; len <= 64; len <<= 1) {
-        int half = len >> 1;
-        int step = 64 / len;
-
+        int half = len >> 1, step = 64 / len;
         for (int i = 0; i < 64; i += len) {
-            int k = 0;
-            for (int j = 0; j < half; j++) {
-                int32_t wr = W_COS_Q8[k];
-                int32_t wi = W_SIN_Q8[k];
-
-                int32_t tr = (real[i + j + half] * wr + imag[i + j + half] * wi) >> 8;
-                int32_t ti = (imag[i + j + half] * wr - real[i + j + half] * wi) >> 8;
-
-                real[i + j + half] = real[i + j] - tr;
-                imag[i + j + half] = imag[i + j] - ti;
-                real[i + j] += tr;
-                imag[i + j] += ti;
-
-                k += step;
+            for (int j = 0; j < half; ++j) {
+                int k = j * step;
+                int32_t wr = W_COS_Q14[k];
+                int32_t wi = W_SIN_Q14[k];
+                int32_t xr = real[i + j + half], xi = imag[i + j + half];
+                int32_t ur = real[i + j], ui = imag[i + j];
+                /* 64-bit intermediates avoid overflow from additions and products. */
+                int32_t tr = (int32_t)(((int64_t)xr * wr + (int64_t)xi * wi) >> 14);
+                int32_t ti = (int32_t)(((int64_t)xi * wr - (int64_t)xr * wi) >> 14);
+                real[i + j]        = ur + tr;
+                imag[i + j]        = ui + ti;
+                real[i + j + half] = ur - tr;
+                imag[i + j + half] = ui - ti;
             }
         }
     }
 }
 
-static inline uint16_t get_magnitude(int16_t r, int16_t i) {
-    if (r < 0) r = -r;
-    if (i < 0) i = -i;
-    int16_t max = (r > i) ? r : i;
-    int16_t min = (r > i) ? i : r;
-    return (uint16_t)(max + (min >> 1));
+/* Cheap magnitude for display and peak detection (not an RMS/calibrated V). */
+static inline uint32_t get_magnitude(int32_t r, int32_t i) {
+    uint32_t a = (uint32_t)(r < 0 ? -r : r);
+    uint32_t b = (uint32_t)(i < 0 ? -i : i);
+    uint32_t hi = (a > b) ? a : b;
+    uint32_t lo = (a > b) ? b : a;
+    return hi + (lo >> 1);
 }
 
-// ============================================================================
-// Audio Core Driver (DDS Out & Loopback In FIFO Draining)
-// ============================================================================
-static void audio_service(void) {
+/* Audio core FIFO register layout: WSLC[31:24], WSRC[23:16],
+ * RALC[15:8], RARC[7:0]. The core is 32-bit PCM in this build.
+ */
+static inline int16_t audio_to_s16(uint32_t word) {
+#if AUDIO_CORE_WIDTH == 32
+    return (int16_t)(((int32_t)word) >> 16);
+#else
+    return (int16_t)(word & 0xFFFFu);
+#endif
+}
+static inline uint32_t audio_from_s16(int16_t s) {
+#if AUDIO_CORE_WIDTH == 32
+    return (uint32_t)((int32_t)s * 65536);
+#else
+    return (uint32_t)(uint16_t)s;
+#endif
+}
+
+/* Called only from IRQ context or once at boot before global interrupts. */
+static void audio_isr(void) {
     volatile uint32_t *audio = HW_REGS(AUDIO_BASE);
-    uint32_t fifospace = audio[1]; // [31:24] WSRC, [23:16] WSLC, [15:8] RARC, [7:0] RALC
-    uint8_t wslc = (fifospace >> 16) & 0xFF;
-    uint8_t wsrc = (fifospace >> 24) & 0xFF;
-    uint8_t ralc = (fifospace >> 0) & 0xFF;
+    g_audio_irq_count++;
 
-    // 1. Line-In FIFO 배출 (오버플로우 방지 및 수신 버퍼 비우기)
-    while (ralc > 0) {
-        (void)audio[2]; // Left Data Read
-        (void)audio[3]; // Right Data Read
-        ralc--;
+    /* Drain all stereo input samples, and retain the left channel for scope/FFT. */
+    uint32_t fs = audio[1];
+    uint32_t n_l = (fs >> 8) & 0xFFu;
+    uint32_t n_r = fs & 0xFFu;
+    uint32_t n = (n_l < n_r) ? n_l : n_r;
+    while (n--) {
+        int16_t left  = audio_to_s16(audio[2]);
+        (void)audio[3]; /* Right-channel FIFO must also be drained. */
+        g_adc_ring[g_adc_total & ADC_RING_MASK] = left;
+        g_adc_total++;
+        g_adc_irq_count++;
     }
 
-    // 2. Line-Out FIFO 송신 (DDS 신호 발생)
-    int samples_to_send = (wslc < wsrc) ? wslc : wsrc;
-    if (samples_to_send > 16) samples_to_send = 16;
-
-    for (int i = 0; i < samples_to_send; i++) {
-        int16_t dac_val = 0;
-        if (g_freq_hz > 0 && g_amp_level > 0) {
-            // DDS 위상 누적: 8000Hz 기준
-            g_audio_phase += (uint32_t)g_freq_hz * 536871ULL;
-            uint8_t lut_idx = (g_audio_phase >> 27) & 0x1F;
-            int16_t sample_val = (SINE_LUT[lut_idx] * g_amp_level) / 5;
-            dac_val = sample_val * 850; // 16-bit Full Scale 확장
+    /* Refill paired output FIFOs to full, clearing the write IRQ level. */
+    fs = audio[1];
+    uint32_t w_l = (fs >> 24) & 0xFFu;
+    uint32_t w_r = (fs >> 16) & 0xFFu;
+    uint32_t w = (w_l < w_r) ? w_l : w_r;
+    while (w--) {
+        int16_t s = 0;
+        uint32_t inc = g_dac_phase_inc;
+        if (inc != 0 && g_amp_level > 0) {
+            g_audio_phase += inc;
+            uint32_t idx = (g_audio_phase >> 27) & 31u;
+            int val = ((int)SINE_LUT[idx] * g_amp_level) / 5;
+            s = (int16_t)(val * 850); /* abs max = 29,750 < 32,768 */
         }
-
-        audio[2] = (uint32_t)(dac_val & 0xFFFF);
-        audio[3] = (uint32_t)(dac_val & 0xFFFF);
+        /* Digital monitor of precisely the PCM sample written to the DAC FIFO.
+         * This is NOT a measurement of the analog Line-out signal. */
+        g_dac_ring[g_dac_total & ADC_RING_MASK] = s;
+        g_dac_total++;
+        uint32_t d = audio_from_s16(s);
+        audio[2] = d;
+        audio[3] = d;
+        g_dac_sent++;
     }
+}
+
+/* CPUlator's Device List omits 0xFF203000, so leave this OFF there.
+ * On hardware with the AV Config MMIO present, write WM8731 registers here.
+ * R8 is deliberately preserved: codec clocks determine the sample rate.
+ */
+static int codec_write_reg(unsigned reg, unsigned val) {
+#if CODEC_CONFIG_MMIO
+    volatile uint32_t *cfg = HW_REGS(0xFF203000u);
+    uint32_t timeout = 1000000u;
+    while (((cfg[1] & 2u) == 0u) && --timeout) {}
+    if (!timeout) return -1;
+    cfg[0] = 0u;              /* DEV = 0: on-board audio */
+    cfg[2] = reg & 0x7Fu;    /* WM8731 address */
+    cfg[3] = val & 0x1FFu;   /* 9-bit register payload */
+    timeout = 1000000u;
+    while (((cfg[1] & 2u) == 0u) && --timeout) {}
+    if (!timeout || (cfg[1] & 1u)) return -1; /* ACK=0 is success */
+    return 0;
+#else
+    (void)reg; (void)val;
+    return 0; /* Not available in CPUlator; no MMIO transaction performed */
+#endif
+}
+static int codec_init(void) {
+    /* For a real board with MMIO configuration available:
+     * R0/1 0dB line gain; R4 DAC selected, bypass/sidetone off;
+     * R5 ADC HPF on, DAC deemphasis off. Do NOT change R7/R8 here.
+     */
+    if (codec_write_reg(0, 0x017)) return -1;
+    if (codec_write_reg(1, 0x017)) return -1;
+    if (codec_write_reg(4, 0x012)) return -1;
+    if (codec_write_reg(5, 0x000)) return -1;
+    return 0;
+}
+
+static void audio_init(void) {
+    volatile uint32_t *a = HW_REGS(AUDIO_BASE);
+    a[0] = 0x0Cu; /* clear both input/output FIFOs */
+    a[0] = 0x00u; /* clear is level controlled: release */
+    audio_isr();  /* prime output FIFOs before enabling IRQ */
+    a[0] = 0x03u; /* RE=1, WE=1 */
 }
 
 // ============================================================================
@@ -508,19 +705,21 @@ static void ps2_poll_mouse(void) {
 // ============================================================================
 static void timer_init(void) {
     volatile uint32_t *timer = HW_REGS(TIMER0_BASE);
-    timer[0] = 0; // TO(Timeout) 비트 클리어
-    // 100MHz 시스템 클럭 기준 1ms SysTick 주기: 100,000 사이클 = 0x186A0
-    timer[2] = 0x186A0 & 0xFFFF;         // Periodl: 0x86A0
-    timer[3] = (0x186A0 >> 16) & 0xFFFF; // Periodh: 0x0001
-    timer[1] = 0x06; // START=1, CONT=1, ITO=0 (시뮬레이터용 Polling 구동)
+    const uint32_t ticks_per_ms = 50000u; /* timer clock 50 MHz */
+    timer[1] = 0; /* stop before programming */
+    timer[0] = 0; /* clear pending timeout */
+    timer[2] = (ticks_per_ms - 1u) & 0xFFFFu;
+    timer[3] = (ticks_per_ms - 1u) >> 16;
+    timer[1] = 0x7u; /* START | CONT | ITO */
 }
-
-static inline void timer_poll(void) {
-    volatile uint32_t *timer = HW_REGS(TIMER0_BASE);
-    if (timer[0] & 0x01) {
-        timer[0] = 0;
-        g_jiffies++;
-    }
+static void timer_isr(void) {
+    HW_REGS(TIMER0_BASE)[0] = 0u; /* clear TO source first */
+    g_jiffies++;
+}
+void interrupt_handler(void) {
+    uint32_t pending = __builtin_rdctl(4); /* ipending */
+    if (pending & TIMER_IRQ) timer_isr();
+    if (pending & AUDIO_IRQ) audio_isr();
 }
 
 // ============================================================================
@@ -556,7 +755,7 @@ static void gui_init(void) {
     draw_box(284, 26, 314, 35, COLOR_CYAN); // [-A]
 
     // 상단 툴바
-    vga_draw_text(1, 1, "[RUN]  [LINE LOOPBACK]  CH1: 500mV/div  Span: 4.0kHz");
+    vga_draw_text(1, 1, "[RUN] [DAC PCM  ]  8kS/s  FFT64  Span:4kHz");
 
     // 우측 메뉴 텍스트
     vga_draw_text(61, 2,  "=== AUDIO GEN ===");
@@ -570,8 +769,12 @@ static void gui_init(void) {
     vga_draw_text(61, 17, "Peak: 0.00 kHz");
     vga_draw_text(61, 19, "Span: 4.00 kHz");
     vga_draw_text(61, 22, "=== STATUS ===");
-    vga_draw_text(61, 24, "Mode: Line-Loop");
+    vga_draw_text(61, 24, "Mode: DAC PCM  ");
     vga_draw_text(61, 26, "DAC : Active");
+
+    /* Toggle between generated DAC PCM and independently sampled ADC PCM. */
+    draw_box(246, 208, 314, 221, COLOR_CYAN);
+    vga_draw_text(63, 53, "[SOURCE]");
 
     for (int i = 0; i <= (WAVE_RIGHT - WAVE_LEFT); i++) {
         g_old_wave_y[i] = TIME_CENTER_Y;
@@ -584,7 +787,17 @@ static void gui_init(void) {
     vga_draw_mouse_pointer(g_mouse.x, g_mouse.y);
 }
 
-static void update_hud_text(int max_bin, uint16_t max_mag) {
+static void update_source_text(void) {
+    if (g_source_mode == SOURCE_DAC) {
+        vga_draw_text(1, 1, "[RUN] [DAC PCM  ]  8kS/s  FFT64  Span:4kHz");
+        vga_draw_text(61, 24, "Mode: DAC PCM  ");
+    } else {
+        vga_draw_text(1, 1, "[RUN] [ADC INPUT]  8kS/s  FFT64  Span:4kHz");
+        vga_draw_text(61, 24, "Mode: ADC Input");
+    }
+}
+
+static void update_hud_text(int max_bin, uint32_t max_mag, uint32_t sample_total) {
     char buf[16];
 
     // Freq 텍스트 갱신 (0.00 ~ 3.50 kHz)
@@ -608,7 +821,7 @@ static void update_hud_text(int max_bin, uint16_t max_mag) {
     vga_draw_text(61, 12, buf);
 
     // Peak 텍스트 갱신
-    if (g_amp_level > 0 && g_freq_hz > 0 && max_mag > 10) {
+    if (sample_total >= 64u && max_mag > 500u) {
         int peak_hz = max_bin * 125;
         int p_khz100 = peak_hz / 10;
         buf[0] = 'P'; buf[1] = 'e'; buf[2] = 'a'; buf[3] = 'k'; buf[4] = ':'; buf[5] = ' ';
@@ -645,6 +858,12 @@ static void handle_gui_interaction(void) {
         else if (g_mouse.x >= 284 && g_mouse.x <= 314 && g_mouse.y >= 26 && g_mouse.y <= 35) {
             if (g_amp_level > 0) g_amp_level--;
         }
+        /* Bottom-right [SOURCE] button, works in CPulator and on board. */
+        else if (g_mouse.x >= 246 && g_mouse.x <= 314 &&
+                 g_mouse.y >= 208 && g_mouse.y <= 221) {
+            g_source_mode = (g_source_mode == SOURCE_DAC) ? SOURCE_ADC : SOURCE_DAC;
+            update_source_text();
+        }
     }
 
     // 마우스 드래그 인터랙션 (<T>, V1 커서)
@@ -677,6 +896,22 @@ static void handle_gui_interaction(void) {
 }
 
 static void render_frame(uint32_t frame_count) {
+    (void)frame_count;
+    /* Copy a coherent 221-sample snapshot of the SELECTED stream.
+     * IRQs are briefly masked only for this memory copy.
+     * ADC input and DAC output are fundamentally separate in CPulator. */
+    int16_t samples[WAVE_RIGHT - WAVE_LEFT + 1];
+    const uint32_t count = (uint32_t)(WAVE_RIGHT - WAVE_LEFT + 1);
+    uint32_t saved_status = __builtin_rdctl(0);
+    __builtin_wrctl(0, saved_status & ~1u);
+    const volatile int16_t *src_ring = (g_source_mode == SOURCE_DAC) ? g_dac_ring : g_adc_ring;
+    uint32_t total = (g_source_mode == SOURCE_DAC) ? g_dac_total : g_adc_total;
+    for (uint32_t j = 0; j < count; ++j) {
+        uint32_t age = count - 1u - j;
+        samples[j] = (total > age) ? src_ring[(total - 1u - age) & ADC_RING_MASK] : 0;
+    }
+    __builtin_wrctl(0, saved_status);
+
     vga_restore_mouse_bg(g_mouse.prev_x, g_mouse.prev_y);
 
     // 1. 이전 커서 소거
@@ -696,30 +931,23 @@ static void render_frame(uint32_t frame_count) {
         }
     }
 
-    // 2. 상단 시간축 파형 렌더링 & FFT 샘플 버퍼 구성
-    int16_t fft_real[64];
-    int16_t fft_imag[64];
-    int step = (g_freq_hz / 250); // 8000Hz 기준 250Hz 단위 비례 스텝
-
-    for (int i = 0; i <= (WAVE_RIGHT - WAVE_LEFT); i++) {
+    // 2. Selected buffered PCM stream -> time waveform and FFT input.
+    int32_t fft_real[64];
+    int32_t fft_imag[64];
+    for (int i = 0; i <= (WAVE_RIGHT - WAVE_LEFT); ++i) {
         int x = WAVE_LEFT + i;
         vga_draw_pixel(x, g_old_wave_y[i], get_background_color(x, g_old_wave_y[i]));
 
-        int wave_val = 0;
-        if (g_freq_hz > 0 && g_amp_level > 0) {
-            int phase = ((i * step) + (frame_count << 1)) & 0x1F;
-            wave_val = (SINE_LUT[phase] * g_amp_level) / 5;
-        }
-
-        int y = TIME_CENTER_Y - wave_val;
+        int32_t pcm = samples[i];
+        int y = TIME_CENTER_Y - (int)(pcm * 38 / 32768);
         if (y < TIME_TOP + 1) y = TIME_TOP + 1;
         if (y > TIME_BOTTOM - 1) y = TIME_BOTTOM - 1;
-
         vga_draw_pixel(x, y, COLOR_YELLOW);
         g_old_wave_y[i] = y;
 
         if (i < 64) {
-            fft_real[i] = wave_val << 3;
+            /* Take the newest 64 selected PCM codes; FFT accum is int32. */
+            fft_real[i] = samples[(WAVE_RIGHT - WAVE_LEFT + 1) - 64 + i];
             fft_imag[i] = 0;
         }
     }
@@ -728,11 +956,11 @@ static void render_frame(uint32_t frame_count) {
     fixed_fft_64(fft_real, fft_imag);
 
     int max_bin = 1;
-    uint16_t max_mag = 0;
+    uint32_t max_mag = 0;
 
     for (int b = 0; b < FFT_BINS; b++) {
-        uint16_t mag = 0;
-        if (g_freq_hz > 0 && g_amp_level > 0) {
+        uint32_t mag = 0;
+        if (total >= 64u) {
             mag = get_magnitude(fft_real[b], fft_imag[b]);
             if (b > 0 && mag > max_mag) {
                 max_mag = mag;
@@ -740,7 +968,11 @@ static void render_frame(uint32_t frame_count) {
             }
         }
 
-        int new_h = mag >> 4;
+        /* Amplitude-scaled display: full-scale bin-centered sinusoid
+         * has unnormalized FFT magnitude N*32768/2 at its positive bin.
+         * Clip height to 70 pixels; does not hide signal-level differences.
+         */
+        int new_h = (int)(((uint64_t)mag * 70u) / (32u * 32768u));
         if (new_h > 70) new_h = 70;
 
         int x_pos = FFT_START_X + (b * FFT_BAR_PITCH);
@@ -765,7 +997,7 @@ static void render_frame(uint32_t frame_count) {
     }
 
     // 4. OSD 텍스트 갱신 (Freq, Amp, Peak)
-    update_hud_text(max_bin, max_mag);
+    update_hud_text(max_bin, max_mag, total);
 
     // 5. V1 전압 커서 & 트리거 마커 그리기
     for (int x = WAVE_LEFT + 1; x < WAVE_RIGHT; x += 4) {
@@ -795,75 +1027,83 @@ static void render_frame(uint32_t frame_count) {
 // Main Entry Point
 // ============================================================================
 int main(void) {
-    g_mouse.x = 160;
-    g_mouse.y = 120;
-    g_mouse.prev_x = 160;
-    g_mouse.prev_y = 120;
-    g_mouse.left_btn = 0;
-    g_mouse.prev_left_btn = 0;
-    g_mouse.right_btn = 0;
+    /* Keep PIE disabled during peripheral and GUI initialization. */
+    __builtin_wrctl(0, 0u);
+    __builtin_wrctl(3, 0u);
 
+    g_mouse.x = 160; g_mouse.y = 120;
+    g_mouse.prev_x = 160; g_mouse.prev_y = 120;
     g_scope.v1_cursor_y = 40;
     g_scope.prev_v1_cursor_y = 40;
     g_scope.trigger_level_y = 64;
     g_scope.prev_trigger_y = 64;
-    g_scope.is_dragging_v1 = 0;
-    g_scope.is_dragging_trig = 0;
-
-    // 초깃값 0 (정지/무음 상태)
-    g_freq_hz   = 0;
+    g_freq_hz = 0;
     g_amp_level = 0;
+    g_source_mode = SOURCE_DAC;
 
-    timer_init();
+    /* CPUlator has no config MMIO: codec_init() is a safe no-op there. */
+    int codec_ok = codec_init();
+    (void)codec_ok;
     ps2_init();
     gui_init();
+    update_source_text();
+    timer_init();
+    audio_init();
+
+    __builtin_wrctl(3, TIMER_IRQ | AUDIO_IRQ); /* ienable bits 0,6 */
+    __builtin_wrctl(0, 1u);                    /* status.PIE = 1 */
 
     uint32_t last_render_tick = 0;
     uint32_t frame_counter = 0;
+    int prev_freq = -1;
 
     while (1) {
-        timer_poll();
         ps2_poll_mouse();
-        audio_service(); // Line Out 샘플 송신 & Line In FIFO 배출
         handle_gui_interaction();
-
-        // 30 FPS 화면 갱신 (33ms 주기)
-        if ((uint32_t)(g_jiffies - last_render_tick) >= 33) {
-            last_render_tick = g_jiffies;
+        /* Calculate DDS tuning word only when user changes frequency. */
+        if (prev_freq != g_freq_hz) {
+            prev_freq = g_freq_hz;
+            g_dac_phase_inc = (uint32_t)(((uint64_t)(uint32_t)g_freq_hz << 32) / AUDIO_SAMPLE_RATE);
+        }
+        uint32_t now = g_jiffies;
+        if ((uint32_t)(now - last_render_tick) >= 33u) {
+            last_render_tick = now;
             render_frame(frame_counter++);
         }
+        /* Audio and timer are served by the shared Nios II exception vector. */
     }
-
-    return 0;
 }
 
-```
+``
 </details>
 
 ---
-
 ## 9. 저장소 디렉터리 구조 및 파일 역할
 
 ```text
 텀프로젝트/
-├── README.md                      # 저장소 종합 기술 문서
-├── src/                           # 메인 소스 코드
-│   └── 텀프_초안업데이트ver_cpulator.c  # 통합 C 소스 코드 (Bare-Metal Nios II)
-├── docs/                          # 프로젝트 문서 및 설계 레퍼런스
-│   ├── termproject_2026.pdf       # 과목 공식 텀프로젝트 가이드라인
-│   ├── 아키텍처_설계_논리_1to5.txt  # 선점형 RTOS vs 협력형 슈퍼루프 공학적 설계 근거
-│   └── 요약.txt                   # 프로젝트 1줄 정의 및 3대 핵심 컨셉 요약문
-└── assets/                        # 아키텍처 다이어그램 및 시뮬레이션 데모 영상
-    ├── 4계층 구조도.png             # 소프트웨어 4계층 아키텍처 다이어그램
-    ├── 구성도 및 간트차트.png        # 하드웨어 블록 구성도 및 타임라인
-    ├── 구성도 및 간트차트2.png       # Avalon-MM 메모리 맵 & 실행 순서 간트차트
-    ├── 최종데모.png                 # 아날로그 AUX 루프백 데모 시스템 구성도
-    └── 전하설 텀프 초안.mp4          # CPulator 30 FPS 실시간 동작 검증 영상
+├── README.md                              # 저장소 종합 기술 문서
+├── src/                                   # 메인 C 소스 코드
+│   ├── de1soc_cpulator_irq_dual_source.c  # 최신 IRQ 듀얼 소스 통합 C 소스 (메인)
+│   └── 텀프_초안업데이트ver_cpulator.c          # 폴링 방식 초기 C 소스 (참고용)
+├── docs/                                  # 프로젝트 문서 및 설계 레퍼런스
+│   ├── README_CPulator_dual_source.md     # DAC/ADC 듀얼 소스 IRQ 아키텍처 상세 문서
+│   ├── termproject_2026.pdf               # 과목 공식 텀프로젝트 가이드라인
+│   ├── 아키텍처_설계_논리_1to5.txt          # 선점형 RTOS vs 협력형 슈퍼루프 공학적 설계 근거
+│   └── 요약.txt                           # 프로젝트 1줄 정의 및 3대 핵심 컨셉 요약문
+└── assets/                                # 아키텍처 다이어그램 및 시뮬레이션 데모 영상
+    ├── 4계층 구조도.png                     # 소프트웨어 4계층 아키텍처 다이어그램
+    ├── 구성도 및 간트차트.png                # 하드웨어 블록 구성도 및 타임라인
+    ├── 구성도 및 간트차트2.png               # Avalon-MM 메모리 맵 & 실행 순서 간트차트
+    ├── 최종데모.png                         # 아날로그 AUX 루프백 데모 시스템 구성도
+    └── 전하설 텀프 초안.mp4                  # CPulator 30 FPS 실시간 동작 검증 영상
 ```
 
 | 경로 및 파일명 | 종류 | 상세 설명 및 역할 |
 | :--- | :---: | :--- |
-| **[`src/텀프_초안업데이트ver_cpulator.c`](src/텀프_초안업데이트ver_cpulator.c)** | C Source | **통합 메인 소스 코드**: DDS 신호발생기, PS/2 마우스 단발 클릭 에지 검출(`[+F]`, `[-F]`, `[+A]`, `[-A]`), $V_1$/`<T>` 드래그 상태 머신, 16-bit Q8 64-pt Radix-2 FFT, 30 FPS 무깜빡임 선택적 소거(Selective Erase) 렌더러 |
+| **[`src/de1soc_cpulator_irq_dual_source.c`](src/de1soc_cpulator_irq_dual_source.c)** | C Source | **최신 통합 메인 소스 코드**: Nios II 하드웨어 예외 벡터 등록(`.section .exceptions`, `0x20`), Timer IRQ(1ms SysTick), Audio IRQ(FIFO In/Out 비차단 링버퍼), DAC PCM vs ADC Input 듀얼 소스 스위칭(`[SOURCE]`), 30 FPS 선택적 소거 렌더러 |
+| **[`src/텀프_초안업데이트ver_cpulator.c`](src/텀프_초안업데이트ver_cpulator.c)** | C Source | **초기 메인 소스 코드 (참고용)**: 단일 슈퍼루프 소프트웨어 폴링(`timer_poll()`) 기반 DSO/FFT 구현체 |
+| **[`docs/README_CPulator_dual_source.md`](docs/README_CPulator_dual_source.md)** | Markdown | **듀얼 소스 모니터링 설계 문서**: CPulator 시뮬레이터의 ADC/DAC 독립 동작 특성 및 디지털 링버퍼 모니터링(`g_dac_ring`) 설계 근거 상세 정리 |
 | **[`assets/전하설 텀프 초안.mp4`](assets/전하설%20텀프%20초안.mp4)** | Video | **시뮬레이션 동작 검증 영상**: CPulator 상에서 30 FPS 실시간 시간축 파형 렌더링, 32-Bin FFT 스펙트럼 바 출력, 마우스 드래그 앤 드롭 및 OSD 실시간 갱신 시연 |
 | **[`assets/구성도 및 간트차트.png`](assets/구성도%20및%20간트차트.png)** | Image | **하드웨어 아키텍처 다이어그램**: Nios II 프로세서, 온칩 SRAM, Interval Timer 0, PS/2 포트, Audio Codec, VGA Display 간의 연결 구조 및 ~33ms 실행 타임라인 |
 | **[`assets/구성도 및 간트차트2.png`](assets/구성도%20및%20간트차트2.png)** | Image | **시스템 구성 (HW Legend) & 실행 간트차트**: 하드웨어 메모리 맵(Avalon-MM) 표, 30 FPS 메인 슈퍼루프 주기적 실행 순서(tim -> ps2 -> aud -> gui -> rnd), `render_frame()` 내부 파이프라인 흐름도 |
@@ -891,9 +1131,11 @@ int main(void) {
 1. 웹 브라우저에서 **[CPulator Nios II Simulator](https://cpulator.01xz.net/?sys=nios-de1soc)** 접속.
 2. System 메뉴에서 **`Nios II - DE1-SoC`** 선택.
 3. 상단 `Settings` 메뉴에서 **`Memory: Suspicious use of cache bypass` 체크 해제**.
-4. [텀프_초안업데이트ver_cpulator.c](src/텀프_초안업데이트ver_cpulator.c)의 전체 코드를 복사하여 CPulator 에디터에 붙여넣기.
+4. [`src/de1soc_cpulator_irq_dual_source.c`](src/de1soc_cpulator_irq_dual_source.c)의 전체 코드를 복사하여 CPulator 에디터에 붙여넣기.
 5. **Compile and Load (단축키 `F5`)** $\rightarrow$ **Continue (단축키 `F3`)** 실행.
-6. **VGA Display** 화면에서 실시간 파형 및 스펙트럼 확인, 우측 패널의 **`[+F]`, `[-F]`, `[+A]`, `[-A]` 버튼**을 마우스로 클릭하여 주파수/진폭 실시간 변화 확인.
+6. **실시간 인터랙션 및 듀얼 소스 모니터링 확인**:
+   * **`DAC PCM` 모드 (기본값)**: 우측 패널의 **`[+F]`, `[-F]`, `[+A]`, `[-A]` 버튼**을 클릭하여 주파수/진폭을 변경하면, DDS 신호 파형 및 FFT 피크 주파수(예: 500Hz 설정 시 0.50 kHz 피크 바)가 즉시 실시간 연동되어 변화함을 확인합니다.
+   * **`ADC Input` 모드 (스위칭)**: 우측 하단 **`[SOURCE]` 버튼**을 클릭하면 실제 Audio Core 입력(`g_adc_ring`) 모니터링으로 전환되며, CPulator 시뮬레이터의 독립 250Hz 톱니파(Sawtooth) 및 고조파 스펙트럼이 정확히 표시됩니다. (다시 클릭하면 `DAC PCM`으로 복귀)
 
 ---
 
