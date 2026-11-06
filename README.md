@@ -1,4 +1,4 @@
-# No-MMU Nios II SoC 기반 대화형 디지털 스토리지 오실로스코프 (DSO) & 실시간 FFT 스펙트럼 분석기
+﻿# No-MMU Nios II SoC 기반 대화형 디지털 스토리지 오실로스코프 (DSO) & 실시간 FFT 스펙트럼 분석기
 
 > **Interactive Digital Storage Oscilloscope & Real-Time FFT Spectrum Analyzer on DE1-SoC (Nios II Soft-Core)**  
 > **개발 환경**: Terasic DE1-SoC (Intel Cyclone V SoC 5CSEMA5F31C6, Nios II Soft-Core Processor @ 100MHz)  
@@ -1087,6 +1087,7 @@ int main(void) {
 │   ├── de1soc_cpulator_irq_dual_source.c  # 최신 IRQ 듀얼 소스 통합 C 소스 (메인)
 │   └── 텀프_초안업데이트ver_cpulator.c          # 폴링 방식 초기 C 소스 (참고용)
 ├── docs/                                  # 프로젝트 문서 및 설계 레퍼런스
+│   ├── DE1SoC_Fixed_Point_설계_근거.md     # 고정소수점(Q1.15/Q17.15/Q2.14) 정밀도 및 오차 분석 보고서
 │   ├── README_CPulator_dual_source.md     # DAC/ADC 듀얼 소스 IRQ 아키텍처 상세 문서
 │   ├── termproject_2026.pdf               # 과목 공식 텀프로젝트 가이드라인
 │   ├── 아키텍처_설계_논리_1to5.txt          # 선점형 RTOS vs 협력형 슈퍼루프 공학적 설계 근거
