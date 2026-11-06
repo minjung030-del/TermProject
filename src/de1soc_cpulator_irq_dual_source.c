@@ -548,7 +548,7 @@ static void ps2_poll_mouse(void) {
 // ============================================================================
 static void timer_init(void) {
     volatile uint32_t *timer = HW_REGS(TIMER0_BASE);
-    const uint32_t ticks_per_ms = 50000u; /* timer clock 50 MHz */
+    const uint32_t ticks_per_ms = 100000u; /* timer clock 100MHz (100,000 cycles = 1ms) */
     timer[1] = 0; /* stop before programming */
     timer[0] = 0; /* clear pending timeout */
     timer[2] = (ticks_per_ms - 1u) & 0xFFFFu;
