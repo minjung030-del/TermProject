@@ -15,7 +15,7 @@
 | 번호 | 핵심 컨셉 키워드 | 세부 설계 및 공학적 구현 내용 |
 | :---: | :--- | :--- |
 | **01** | **계층형 경량 이벤트 드리븐 OS**<br>*(Layered Tiny OS)* | • 상용 RTOS나 외부 라이브러리 없이 SysTick(1ms) 타이머 기반 비차단(Non-blocking) 이벤트 디스패처 구축<br>• HAL - BSW - OS - App 4계층 구조를 직접 설계하여 결정론적 실시간성(Deterministic Hard Real-Time) 및 모듈성 확보<br>• 3-Byte PS/2 패킷 무결성 가드(Bit 3 Sync) 및 I/O 버퍼 고속 배출(Rapid FIFO Drain)로 오버플로우 방지 |
-| **02** | **초경량 고정소수점 DSP 엔진**<br>*(Fixed-Point FFT & Split-View)* | • FPU가 없는 Nios II의 제약을 극복하기 위해 16-bit Q8 고정소수점 64-Point Radix-2 DIT FFT를 순수 정수 연산으로 직접 구현<br>• 32-step 삼각함수 LUT 기반 고속 연산 및 Alpha-Max + Beta-Min 복소수 진폭 근사 알고리즘 적용<br>• 시간축 파형과 주파수 스펙트럼(32 Bins)을 분할 화면(Split-View)으로 실시간 렌더링하고 피크 주파수(kHz)를 OSD에 자동 도출 |
+| **02** | **초경량 고정소수점 DSP 엔진**<br>*(Fixed-Point FFT & Split-View)* | • FPU 레이턴시 오버헤드 배제 및 연산 속도 극대화를 위해 16-bit Q8 고정소수점 64-Point Radix-2 DIT FFT를 순수 정수 연산과 1사이클 비트 시프트로 직접 구현<br>• 32-step 삼각함수 LUT 기반 고속 연산 및 Alpha-Max + Beta-Min 복소수 진폭 근사 알고리즘 적용<br>• 시간축 파형과 주파수 스펙트럼(32 Bins)을 분할 화면(Split-View)으로 실시간 렌더링하고 피크 주파수(kHz)를 OSD에 자동 도출 |
 | **03** | **대화형 HMI & 무깜빡임 선택적 렌더링**<br>*(Interactive GUI & Zero-Flicker)* | • PS/2 마우스 인터랙션을 통해 화면 우측의 `[+F]`, `[-F]`, `[+A]`, `[-A]` 버튼을 클릭하여 주파수/진폭 실시간 조작<br>• $V_1$ 전압 측정 커서선 및 `<T>` 트리거 레벨 마커 실시간 마우스 드래그 앤 드롭<br>• 화면 전체 갱신 대신 이전 픽셀만 선별 복원하는 선택적 소거(Selective Erase) 기법으로 CPU 점유율 3% 미만의 안정적인 30 FPS 구동 |
 
 ---
@@ -91,6 +91,13 @@
 
 4. **엄격한 결정론적 실행(Deterministic Timing) 보장**
    * 우선순위 역전이나 스케줄러 틱 지터 없이 **정확히 33ms마다 DSP 연산과 화면 출력을 수행**하는 하드 실시간(Hard Real-Time) 특성을 가집니다.
+
+5. **[참고] FFT 연산에서의 부동소수점 유닛(FPU) 활용 가능성 (선택 사항)**
+   * **현재 구현 (비트 시프트 기반 고정소수점)**:
+     * 본 프로젝트의 64-pt FFT는 연산 지연(Latency)을 최소화하기 위해 **단 1사이클에 수행되는 산술 비트 시프트(`>>`, `<<`)**를 사용하여 스케일링과 나눗셈을 처리했습니다 (100MHz 기준 연산 시간 **0.25ms 미만** 달성).
+   * **하드웨어 FPU 활용 (대안 옵션)**:
+     * 본 DE1-SoC Computer 시스템의 Nios II 코어에는 **하드웨어 FPU(`nios2_floating_point` Custom Instruction)가 기본 내장**되어 있습니다.
+     * 따라서 복잡한 고정소수점 변환 대신 **C 언어 표준 `float` 자료형의 곱셈(`*`) 및 나눗셈(`/`)을 사용하여 구현하는 것도 가능**하며, 이는 알고리즘의 직관성과 극단적 연산 최적화 사이의 **설계 선택 사항**입니다.
 
 ---
 
