@@ -142,19 +142,94 @@ if (g_old_fft_h[b] > new_h) {
 
 ---
 
-## 8. 전체 소스 코드 ([de1soc_cpulator_irq_dual_source.c](src/de1soc_cpulator_irq_dual_source.c))
+## 8. 핵심 소스 코드 및 통합 구현 ([de1soc_cpulator_irq_dual_source.c](src/de1soc_cpulator_irq_dual_source.c))
 
-> **[주요 업데이트]**  
-> * **Nios II 예외 벡터 등록(.section .exceptions,  x20)**: Timer IRQ 0 (1ms SysTick) 및 Audio IRQ 6 (FIFO In/Out)을 하드웨어 인터럽트로 완전 통합하여 메인 슈퍼루프 부하를 최소화.  
-> * **듀얼 소스 모니터링([SOURCE] 버튼)**:  
->   * DAC PCM (기본값): DDS 발생기가 DAC FIFO로 보내는 PCM을 디지털 링버퍼(g_dac_ring)로 캡처하여 VGA 및 FFT 실시간 분석 (마우스 주파수/진폭 조작 즉각 연동).  
->   * ADC Input (선택 모드): Audio Core Line-In ADC FIFO 입력(g_adc_ring) 분석 (CPulator에서는 독립 250Hz 톱니파 표시, 실제 보드에서는 AUX 루프백 신호 분석).  
-> * **[임시 파라미터 안내]**: 본 코드의 FFT 및 고정소수점(Fixed-Point Q2.14) 스케일링 파라미터는 CPulator 시뮬레이션 환경용 **임시(Draft) 파라미터**이며, 추후 실제 DE1-SoC 하드웨어 보드에서 Line-In 전압 레벨(Vpp) 실측 및 FPU 활용 여부를 검토하여 최종 확정됩니다.
+> **[주요 아키텍처 업데이트]**
+> * **Nios II 예외 벡터 등록 (`.section .exceptions`, `0x20`)**: Timer IRQ 0 (1ms SysTick) 및 Audio IRQ 6 (FIFO In/Out)을 하드웨어 인터럽트로 완전 통합하여 메인 슈퍼루프 부하를 최소화.
+> * **듀얼 소스 모니터링 (`[SOURCE]` 버튼)**:
+>   * `DAC PCM` (기본값): DDS 발생기가 DAC FIFO로 보내는 PCM을 디지털 링버퍼(`g_dac_ring`)로 캡처하여 VGA 및 FFT 실시간 분석 (마우스 주파수/진폭 조작 즉각 연동).
+>   * `ADC Input` (선택 모드): Audio Core Line-In ADC FIFO 입력(`g_adc_ring`) 분석 (CPulator에서는 독립 250Hz 톱니파 표시, 실제 보드에서는 AUX 루프백 신호 분석).
+> * **[임시 파라미터 안내]**: 본 코드의 FFT 및 고정소수점(Fixed-Point Q2.14) 스케일링 파라미터는 CPulator 시뮬레이션 환경용 **임시(Draft) 파라미터**이며, 추후 실제 DE1-SoC 하드웨어 보드에서 Line-In 전압 레벨($V_{\text{pp}}$) 실측 및 FPU 활용 여부를 검토하여 최종 확정됩니다.
 
-<details open>
-<summary><b>[전체 C 소스 코드 보기 - 클릭하여 접기 / 펼치기]</b></summary>
+### 8.1 하드웨어 인터럽트 벡터 및 ISR 핵심 구현부
 
-``c
+```c
+// ============================================================================
+// Nios II Hardware Exception Vector (Address 0x20)
+// ============================================================================
+void interrupt_handler(void);
+__asm__(
+    ".section .exceptions, \"ax\"\n"
+    ".global the_exception\n"
+    "the_exception:\n"
+    "subi sp, sp, 128\n"
+    "stw et, 96(sp)\n"
+    "rdctl et, ipending\n"
+    "beq et, r0, 1f\n"
+    "subi ea, ea, 4\n"
+    "1:\n"
+    // ... [GPR 레지스터 r1~r31 스택 백업] ...
+    "call interrupt_handler\n"
+    // ... [GPR 레지스터 r1~r31 스택 복원] ...
+    "eret\n"
+    ".previous\n"
+);
+
+// ============================================================================
+// Interrupt Dispatcher & Driver ISRs
+// ============================================================================
+void interrupt_handler(void) {
+    uint32_t pending = __builtin_rdctl(4); /* ipending */
+    if (pending & TIMER_IRQ) timer_isr();  /* IRQ 0: 1ms SysTick */
+    if (pending & AUDIO_IRQ) audio_isr();  /* IRQ 6: Audio FIFO In/Out & Ring Buffer */
+}
+
+static void timer_isr(void) {
+    HW_REGS(TIMER0_BASE)[0] = 0u; /* TO(Timeout) 비트 클리어 (ACK) */
+    g_jiffies++;
+}
+
+static void audio_isr(void) {
+    volatile uint32_t *audio = HW_REGS(AUDIO_BASE);
+    g_audio_irq_count++;
+
+    // 1. Line-In ADC FIFO 배출 및 ADC 링버퍼(g_adc_ring) 저장
+    uint32_t fs = audio[1];
+    uint32_t n = ((fs >> 8) & 0xFFu); // Left FIFO 채움 레벨
+    while (n--) {
+        int16_t left = audio_to_s16(audio[2]);
+        (void)audio[3]; // Right FIFO 배출
+        g_adc_ring[g_adc_total & ADC_RING_MASK] = left;
+        g_adc_total++;
+    }
+
+    // 2. Line-Out DAC FIFO 채우기 및 디지털 PCM 링버퍼(g_dac_ring) 동시 캡처
+    fs = audio[1];
+    uint32_t w = ((fs >> 24) & 0xFFu); // Left FIFO 여유 공간
+    while (w--) {
+        int16_t s = 0;
+        if (g_dac_phase_inc != 0 && g_amp_level > 0) {
+            g_audio_phase += g_dac_phase_inc;
+            uint32_t idx = (g_audio_phase >> 27) & 31u;
+            int val = ((int)SINE_LUT[idx] * g_amp_level) / 5;
+            s = (int16_t)(val * 850);
+        }
+        g_dac_ring[g_dac_total & ADC_RING_MASK] = s; // [핵심] 디지털 모니터링 캡처
+        g_dac_total++;
+        uint32_t d = audio_from_s16(s);
+        audio[2] = d; audio[3] = d;
+    }
+}
+```
+
+### 8.2 전체 C 소스 코드 전문
+
+전체 C 소스 코드는 [`src/de1soc_cpulator_irq_dual_source.c`](src/de1soc_cpulator_irq_dual_source.c) 파일에서 열람 및 복사하실 수 있습니다.
+
+<details>
+<summary><b>[전체 C 소스 코드 보기 - 클릭하여 펼치기] (총 915 라인)</b></summary>
+
+```c
 /*
  * DE1-SoC / CPulator Audio IRQ demo: selectable spectrum source.
  * SOURCE_DAC (default): waveform/FFT track DDS PCM written to DAC FIFO.
@@ -1073,11 +1148,11 @@ int main(void) {
         /* Audio and timer are served by the shared Nios II exception vector. */
     }
 }
-
-``
+```
 </details>
 
 ---
+
 ## 9. 저장소 디렉터리 구조 및 파일 역할
 
 ```text
