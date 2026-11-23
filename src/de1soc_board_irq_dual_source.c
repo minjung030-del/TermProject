@@ -54,6 +54,7 @@
 #define ADC_RING_MASK (ADC_RING_SIZE-1u)
 #define SOURCE_ADC 0
 #define SOURCE_DAC 1
+#define ADC_DISPLAY_ZOOM 4 /* VGA amplitude only; codec gain and FFT input stay unchanged. */
 #define AUDIO_IRQ (1u << 6)
 #define TIMER_IRQ (1u << 0)
 
@@ -710,6 +711,9 @@ static void gui_init(void) {
 }
 
 static void update_source_text(void) {
+    char zoom_text[] = "Zoom: x1";
+    if (g_source_mode == SOURCE_ADC) zoom_text[7] = '0' + ADC_DISPLAY_ZOOM;
+    vga_draw_text(61, 21, zoom_text);
     if (g_source_mode == SOURCE_DAC) {
         vga_draw_text(1, 1, AUDIO_BANNER_DAC);
         vga_draw_text(61, 24, "Mode: DAC PCM  ");
@@ -815,6 +819,7 @@ static void handle_gui_interaction(void) {
 
 static void render_frame(uint32_t frame_count) {
     (void)frame_count;
+    const int display_zoom = (g_source_mode == SOURCE_ADC) ? ADC_DISPLAY_ZOOM : 1;
     /* Copy a coherent 221-sample snapshot of the SELECTED stream.
      * IRQs are briefly masked only for this memory copy.
      * ADC input and DAC output are fundamentally separate in CPulator. */
@@ -857,7 +862,7 @@ static void render_frame(uint32_t frame_count) {
         vga_draw_pixel(x, g_old_wave_y[i], get_background_color(x, g_old_wave_y[i]));
 
         int32_t pcm = samples[i];
-        int y = TIME_CENTER_Y - (int)(pcm * 38 / 32768);
+        int y = TIME_CENTER_Y - (int)(pcm * 38 * display_zoom / 32768);
         if (y < TIME_TOP + 1) y = TIME_TOP + 1;
         if (y > TIME_BOTTOM - 1) y = TIME_BOTTOM - 1;
         vga_draw_pixel(x, y, COLOR_YELLOW);
@@ -890,7 +895,7 @@ static void render_frame(uint32_t frame_count) {
          * has unnormalized FFT magnitude N*32768/2 at its positive bin.
          * Clip height to 70 pixels; does not hide signal-level differences.
          */
-        int new_h = (int)(((uint64_t)mag * 70u) / (32u * 32768u));
+        int new_h = (int)(((uint64_t)mag * 70u * (unsigned)display_zoom) / (32u * 32768u));
         if (new_h > 70) new_h = 70;
 
         int x_pos = FFT_START_X + (b * FFT_BAR_PITCH);
